@@ -1,37 +1,52 @@
 # ==============================================================
-# PIEZO-ACOUSTIC FULL PIPELINE — RUN ALL (versão autônoma)
+# PIEZO-ACOUSTIC FULL PIPELINE - RUN ALL (standalone)
 # --------------------------------------------------------------
-# Gera dados sintéticos (10 meios), treina IA (features e CNN-1D)
-# e salva tudo em /MyDrive/saida_piezo ou ./saida_piezo.
+# Generates synthetic data (10 media), trains ML (features and 1D-CNN),
+# and saves outputs to /MyDrive/saida_piezo (Colab) or ./saida_piezo (local).
 # ==============================================================
 
-!pip install -q scikit-learn matplotlib pandas numpy tensorflow requests
+!pip -q install scikit-learn matplotlib pandas numpy tensorflow requests scipy joblib
+
 import importlib, sys, os, json, zipfile, warnings, subprocess
 importlib.invalidate_caches()
 warnings.filterwarnings("ignore")
 
-# === 0) Instalação automática (robusta) ======================
+# === 0) Robust auto-install helper ============================
 def _ensure(pkg):
     try:
         importlib.import_module(pkg)
         return True
     except ModuleNotFoundError:
-        print(f"[INFO] Instalando {pkg} ...")
-        subprocess.run([sys.executable, "-m", "pip", "install", pkg, "-q", "--no-warn-script-location"])
+        print("[INFO] Installing %s ..." % pkg)
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", pkg, "-q", "--no-warn-script-location"],
+            check=False
+        )
         importlib.invalidate_caches()
         try:
             importlib.import_module(pkg)
-            print(f"[OK] {pkg} importado com sucesso.")
+            print("[OK] %s imported." % pkg)
             return True
         except Exception as e:
-            print(f"[ERRO] Falha ao importar {pkg}: {e}")
+            print("[ERROR] Failed importing %s: %s" % (pkg, str(e)))
             return False
 
-for pkg in ["scikit-learn", "matplotlib", "pandas", "numpy", "tensorflow", "requests"]:
+for pkg in ["scikit-learn", "matplotlib", "pandas", "numpy", "requests", "scipy", "joblib"]:
     _ensure(pkg)
 
-# === 0.1) Imports principais =================================
-import numpy as np, pandas as pd, matplotlib.pyplot as plt
+# TensorFlow is optional
+HAS_TF = _ensure("tensorflow")
+if HAS_TF:
+    try:
+        import tensorflow as tf
+        from tensorflow import keras
+    except Exception:
+        HAS_TF = False
+
+# === 0.1) Main imports ========================================
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
@@ -40,147 +55,229 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, accuracy_s
 from sklearn.ensemble import RandomForestClassifier
 import joblib
 
-try:
-    import tensorflow as tf
-    from tensorflow import keras
-    HAS_TF = True
-except Exception:
-    HAS_TF = False
-
-# === 1) Drive e diretórios ===================================
+# === 1) Drive and folders =====================================
 IN_COLAB = "google.colab" in sys.modules
 if IN_COLAB:
     from google.colab import drive
-    drive.mount('/content/drive', force_remount=True)
+    drive.mount("/content/drive", force_remount=True)
     OUTPUT_DIR = "/content/drive/MyDrive/saida_piezo"
 else:
     OUTPUT_DIR = "./saida_piezo"
 
-for d in [OUTPUT_DIR,
-          f"{OUTPUT_DIR}/dados_sinteticos/dados_brutos",
-          f"{OUTPUT_DIR}/dados_reais",
-          f"{OUTPUT_DIR}/out_model"]:
-    os.makedirs(d, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(os.path.join(OUTPUT_DIR, "dados_sinteticos", "dados_brutos"), exist_ok=True)
+os.makedirs(os.path.join(OUTPUT_DIR, "dados_reais"), exist_ok=True)
+os.makedirs(os.path.join(OUTPUT_DIR, "out_model"), exist_ok=True)
 
-DIR_SYN_FFT = f"{OUTPUT_DIR}/dados_sinteticos/dados_brutos"
-DIR_OUT = f"{OUTPUT_DIR}/out_model"
+DIR_SYN_FFT = os.path.join(OUTPUT_DIR, "dados_sinteticos", "dados_brutos")
+DIR_OUT = os.path.join(OUTPUT_DIR, "out_model")
 print("OUTPUT_DIR =", OUTPUT_DIR)
 
-# === 2) Gerar dados sintéticos ===============================
+# === 2) Generate synthetic data ===============================
 np.random.seed(42)
-fs, t_total, t = 1e6, 0.005, np.arange(0, 0.005, 1e-6)
-espessura, n_samples = 2e-3, 100
+fs = 1e6
+t = np.arange(0, 0.005, 1e-6)
+espessura = 2e-3
+n_samples = 100
+
 meios = {
- "agua": (1000,1500,1.0),"oleo":(850,1400,10),"ar":(1.2,343,0.02),
- "areia_seca":(1600,300,50),"areia_umida":(1800,450,70),"argila":(1900,250,200),
- "lama":(1750,200,400),"silte":(1650,280,150),"glicerina":(1260,1900,1200),"concreto":(2300,3500,1000)
+    "agua": (1000, 1500, 1.0),
+    "oleo": (850, 1400, 10),
+    "ar": (1.2, 343, 0.02),
+    "areia_seca": (1600, 300, 50),
+    "areia_umida": (1800, 450, 70),
+    "argila": (1900, 250, 200),
+    "lama": (1750, 200, 400),
+    "silte": (1650, 280, 150),
+    "glicerina": (1260, 1900, 1200),
+    "concreto": (2300, 3500, 1000),
 }
-dados=[]
-for meio,(rho,c,visc) in meios.items():
-  for i in range(n_samples):
-    fr0=c/(2*espessura); fa0=fr0*1.4
-    fr=fr0*(1+0.02*np.random.randn()); fa=fa0*(1+0.02*np.random.randn())
-    v=np.sin(2*np.pi*fr*t)*np.exp(-1000*t)+0.5*np.sin(2*np.pi*fa*t)*np.exp(-800*t)+0.05*np.random.randn(len(t))
-    f=np.fft.rfftfreq(len(v),1/fs); A=np.abs(np.fft.rfft(v*np.hanning(len(v))))
-    A/=A.max()+1e-9; peaks,_=find_peaks(A,height=0.05,distance=100)
-    if len(peaks)>=2: frd, fad=f[peaks[0]], f[peaks[1]]
-    elif len(peaks)==1: frd,fad=f[peaks[0]], f[peaks[0]]*1.2
-    else: frd,fad=fr,fa
-    k2=(np.pi/2)*((fad-frd)/fad); Z=rho*c
-    nome=f"{meio}_{i:03d}"
-    np.savetxt(f"{DIR_SYN_FFT}/fft_{nome}.csv", np.c_[f,A],
-               delimiter=",", header="frequencia,amplitude", comments="")
-    dados.append({"amostra":nome,"meio":meio,"f_r":frd,"f_a":fad,"k2":k2,"Z":Z})
-df_sint=pd.DataFrame(dados)
-df_sint.to_csv(f"{OUTPUT_DIR}/banco_piezo_total.csv",index=False)
-print("Sintético:", len(df_sint))
 
-# === 3) Banco híbrido ========================================
-df_hibrid=df_sint.copy(); df_hibrid["tipo"]="synthetic"
-df_hibrid.to_csv(f"{OUTPUT_DIR}/banco_piezo_hibrido.csv",index=False)
-print("Banco híbrido criado.")
+dados = []
+for meio, (rho, c, visc) in meios.items():
+    for i in range(n_samples):
+        fr0 = c / (2 * espessura)
+        fa0 = fr0 * 1.4
+        fr = fr0 * (1 + 0.02 * np.random.randn())
+        fa = fa0 * (1 + 0.02 * np.random.randn())
 
-# === 4) Treinamento FEATURES ================================
-feat=["f_r","f_a","k2","Z"]
-X=df_hibrid[feat]; y=df_hibrid["meio"]
-le=LabelEncoder(); yid=le.fit_transform(y)
-Xtr,Xte,ytr,yte=train_test_split(X,yid,test_size=0.2,stratify=yid,random_state=42)
-pipe=make_pipeline(StandardScaler(), RandomForestClassifier(n_estimators=300,random_state=42))
-pipe.fit(Xtr,ytr); yp=pipe.predict(Xte)
-print("Acurácia:", accuracy_score(yte,yp))
-joblib.dump({"pipeline":pipe,"label_encoder":le,"feat_cols":feat}, f"{DIR_OUT}/model_features.joblib")
+        v = (
+            np.sin(2 * np.pi * fr * t) * np.exp(-1000 * t)
+            + 0.5 * np.sin(2 * np.pi * fa * t) * np.exp(-800 * t)
+            + 0.05 * np.random.randn(len(t))
+        )
 
-cm = confusion_matrix(le.inverse_transform(yte),
-                      le.inverse_transform(yp),
-                      labels=le.classes_)
-fig, ax = plt.subplots(figsize=(6,5))
-ConfusionMatrixDisplay(confusion_matrix=cm,
-                       display_labels=le.classes_).plot(ax=ax, colorbar=False)
-ax.set_title("Confusão — Features")
-plt.tight_layout(); plt.savefig(f"{DIR_OUT}/cm_features.png", dpi=180); plt.close()
+        f = np.fft.rfftfreq(len(v), 1 / fs)
+        A = np.abs(np.fft.rfft(v * np.hanning(len(v))))
+        A /= (A.max() + 1e-9)
 
-# === 5) CNN-1D (FFT) se TF disponível ========================
-def load_fft_tensor(df,n_points=8192):
-  X,y=[],[]
-  for nm,meio in zip(df["amostra"],df["meio"]):
-    p=f"{DIR_SYN_FFT}/fft_{nm}.csv"
-    if not os.path.exists(p): continue
-    d=pd.read_csv(p); a=d.iloc[:,1].values
-    a/=a.max()+1e-9
-    a=a[:n_points] if len(a)>=n_points else np.pad(a,(0,n_points-len(a)))
-    X.append(a[...,None]); y.append(meio)
-  return np.array(X),np.array(y)
+        peaks, _ = find_peaks(A, height=0.05, distance=100)
+        if len(peaks) >= 2:
+            frd, fad = f[peaks[0]], f[peaks[1]]
+        elif len(peaks) == 1:
+            frd, fad = f[peaks[0]], f[peaks[0]] * 1.2
+        else:
+            frd, fad = fr, fa
+
+        k2 = (np.pi / 2) * ((fad - frd) / max(fad, 1e-12))
+        Z = rho * c
+
+        nome = "%s_%03d" % (meio, i)
+        np.savetxt(
+            os.path.join(DIR_SYN_FFT, "fft_%s.csv" % nome),
+            np.c_[f, A],
+            delimiter=",",
+            header="frequencia,amplitude",
+            comments="",
+        )
+        dados.append({"amostra": nome, "meio": meio, "f_r": frd, "f_a": fad, "k2": k2, "Z": Z})
+
+df_sint = pd.DataFrame(dados)
+df_sint.to_csv(os.path.join(OUTPUT_DIR, "banco_piezo_total.csv"), index=False)
+print("Synthetic samples:", len(df_sint))
+
+# === 3) Hybrid bank ===========================================
+df_hibrid = df_sint.copy()
+df_hibrid["tipo"] = "synthetic"
+df_hibrid.to_csv(os.path.join(OUTPUT_DIR, "banco_piezo_hibrido.csv"), index=False)
+print("Hybrid bank created.")
+
+# === 4) Features model (RandomForest) =========================
+feat_cols = ["f_r", "f_a", "k2", "Z"]
+X = df_hibrid[feat_cols]
+y = df_hibrid["meio"]
+
+le = LabelEncoder()
+yid = le.fit_transform(y)
+
+Xtr, Xte, ytr, yte = train_test_split(
+    X, yid, test_size=0.2, stratify=yid, random_state=42
+)
+
+pipe = make_pipeline(
+    StandardScaler(),
+    RandomForestClassifier(n_estimators=300, random_state=42),
+)
+pipe.fit(Xtr, ytr)
+yp = pipe.predict(Xte)
+acc = accuracy_score(yte, yp)
+print("Accuracy (features):", acc)
+
+joblib.dump(
+    {"pipeline": pipe, "label_encoder": le, "feat_cols": feat_cols},
+    os.path.join(DIR_OUT, "model_features.joblib"),
+)
+
+cm = confusion_matrix(
+    le.inverse_transform(yte),
+    le.inverse_transform(yp),
+    labels=le.classes_,
+)
+fig, ax = plt.subplots(figsize=(6, 5))
+ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_).plot(ax=ax, colorbar=False)
+ax.set_title("Confusion - Features")
+plt.tight_layout()
+plt.savefig(os.path.join(DIR_OUT, "cm_features.png"), dpi=180)
+plt.close()
+
+# === 5) 1D-CNN on FFT (optional) ==============================
+def load_fft_tensor(df, n_points=8192):
+    X_list, y_list = [], []
+    for nm, meio in zip(df["amostra"], df["meio"]):
+        p = os.path.join(DIR_SYN_FFT, "fft_%s.csv" % nm)
+        if not os.path.exists(p):
+            continue
+        d = pd.read_csv(p)
+        a = d.iloc[:, 1].values.astype(np.float32)
+        a /= (a.max() + 1e-9)
+        if len(a) >= n_points:
+            a = a[:n_points]
+        else:
+            a = np.pad(a, (0, n_points - len(a)))
+        X_list.append(a[:, None])
+        y_list.append(meio)
+    return np.array(X_list, dtype=np.float32), np.array(y_list)
 
 if HAS_TF:
-  Xf,yf=load_fft_tensor(df_sint)
-  le2=LabelEncoder()
-  y2=le2.fit_transform(yf)
-  y2=np.array(y2,dtype=np.int32)  # <-- correção principal
-  Xtr,Xte,ytr,yte=train_test_split(Xf,y2,test_size=0.2,stratify=y2,random_state=42)
-  m=keras.Sequential([
-      keras.layers.Conv1D(32,9,padding="same",activation="relu",input_shape=(Xf.shape[1],1)),
-      keras.layers.MaxPooling1D(2),
-      keras.layers.Conv1D(64,9,padding="same",activation="relu"),
-      keras.layers.GlobalAveragePooling1D(),
-      keras.layers.Dense(128,activation="relu"),
-      keras.layers.Dropout(0.3),
-      keras.layers.Dense(len(le2.classes_),activation="softmax")])
-  m.compile(optimizer="adam",loss="sparse_categorical_crossentropy",metrics=["accuracy"])
-  cb=[keras.callbacks.EarlyStopping(monitor="val_loss",patience=4,restore_best_weights=True)]
-  h=m.fit(Xtr,ytr,validation_split=0.2,epochs=20,batch_size=64,verbose=2,callbacks=cb)
-  m.save(f"{DIR_OUT}/model_fft.h5")
-  json.dump({"classes":list(le2.classes_)},open(f"{DIR_OUT}/classes_fft.json","w"))
-  plt.figure();plt.plot(h.history["accuracy"]);plt.plot(h.history["val_accuracy"])
-  plt.title("CNN1D — Accuracy");plt.savefig(f"{DIR_OUT}/cnn_acc.png",dpi=160);plt.close()
-else:
-  print("TensorFlow não disponível; pulando CNN.")
+    Xf, yf = load_fft_tensor(df_sint)
+    if len(Xf) > 0:
+        le2 = LabelEncoder()
+        y2 = le2.fit_transform(yf).astype(np.int32)
 
-# === 6) Inferência de exemplo ===============================
-example = os.path.join(DIR_SYN_FFT, sorted(os.listdir(DIR_SYN_FFT))[0])
-d=pd.read_csv(example)
-f=d.iloc[:,0].values; a=d.iloc[:,1].values/(d.iloc[:,1].values.max()+1e-9)
-peaks,_=find_peaks(a,height=0.05,distance=50)
-if len(peaks)>=2: fr,fa=f[peaks[0]],f[peaks[1]]
-elif len(peaks)==1: fr,fa=f[peaks[0]],f[peaks[0]]*1.2
-else: fr,fa=f[0],f[0]*1.2
-k2=(np.pi/2)*((fa-fr)/fa)
-arr=np.array([[fr,fa,k2,np.nan]])
+        Xtr, Xte, ytr, yte = train_test_split(
+            Xf, y2, test_size=0.2, stratify=y2, random_state=42
+        )
+
+        m = keras.Sequential([
+            keras.layers.Conv1D(32, 9, padding="same", activation="relu", input_shape=(Xf.shape[1], 1)),
+            keras.layers.MaxPooling1D(2),
+            keras.layers.Conv1D(64, 9, padding="same", activation="relu"),
+            keras.layers.GlobalAveragePooling1D(),
+            keras.layers.Dense(128, activation="relu"),
+            keras.layers.Dropout(0.3),
+            keras.layers.Dense(len(le2.classes_), activation="softmax"),
+        ])
+        m.compile(optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+        cb = [keras.callbacks.EarlyStopping(monitor="val_loss", patience=4, restore_best_weights=True)]
+        h = m.fit(Xtr, ytr, validation_split=0.2, epochs=20, batch_size=64, verbose=2, callbacks=cb)
+
+        m.save(os.path.join(DIR_OUT, "model_fft.h5"))
+        json.dump({"classes": list(le2.classes_)}, open(os.path.join(DIR_OUT, "classes_fft.json"), "w"))
+
+        plt.figure()
+        plt.plot(h.history.get("accuracy", []))
+        plt.plot(h.history.get("val_accuracy", []))
+        plt.title("CNN1D - Accuracy")
+        plt.legend(["train", "val"])
+        plt.tight_layout()
+        plt.savefig(os.path.join(DIR_OUT, "cnn_acc.png"), dpi=160)
+        plt.close()
+    else:
+        print("No FFT tensors loaded; skipping CNN.")
+else:
+    print("TensorFlow not available; skipping CNN.")
+
+# === 6) Example inference =====================================
+fft_files = sorted([fn for fn in os.listdir(DIR_SYN_FFT) if fn.lower().endswith(".csv")])
+if len(fft_files) == 0:
+    raise RuntimeError("No FFT CSV files found in %s" % DIR_SYN_FFT)
+
+example = os.path.join(DIR_SYN_FFT, fft_files[0])
+d = pd.read_csv(example)
+f = d.iloc[:, 0].values
+a = d.iloc[:, 1].values / (d.iloc[:, 1].values.max() + 1e-9)
+
+peaks, _ = find_peaks(a, height=0.05, distance=50)
+if len(peaks) >= 2:
+    fr, fa = f[peaks[0]], f[peaks[1]]
+elif len(peaks) == 1:
+    fr, fa = f[peaks[0]], f[peaks[0]] * 1.2
+else:
+    fr, fa = f[0], f[0] * 1.2
+
+k2 = (np.pi / 2) * ((fa - fr) / max(fa, 1e-12))
+arr = np.array([[fr, fa, k2, np.nan]], dtype=np.float64)
+
 pred_id = pipe.predict(arr)[0]
 pred = le.inverse_transform([pred_id])[0]
-try: proba = float(pipe.predict_proba(arr)[0].max())
-except Exception: proba = 0.0
-print("Predição de exemplo:", pred)
+try:
+    proba = float(pipe.predict_proba(arr)[0].max())
+except Exception:
+    proba = 0.0
 
-# === 7) Compactar outputs ====================================
-ZIP_PATH=f"{OUTPUT_DIR}/saida_piezo_publicacao.zip"
-with zipfile.ZipFile(ZIP_PATH,"w",zipfile.ZIP_DEFLATED) as z:
-  for r,_,fs in os.walk(OUTPUT_DIR):
-    for fz in fs:
-      if fz.endswith(".zip"): continue
-      z.write(os.path.join(r,fz), arcname=os.path.relpath(os.path.join(r,fz),OUTPUT_DIR))
-print("ZIP final salvo em:", ZIP_PATH)
+print("Example prediction:", pred, "| confidence:", proba)
 
-# === 8) Informational panel - PIEZO =======================
+# === 7) Zip outputs ===========================================
+ZIP_PATH = os.path.join(OUTPUT_DIR, "saida_piezo_publicacao.zip")
+with zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as z:
+    for r, _, fs_ in os.walk(OUTPUT_DIR):
+        for fz in fs_:
+            if fz.endswith(".zip"):
+                continue
+            z.write(os.path.join(r, fz), arcname=os.path.relpath(os.path.join(r, fz), OUTPUT_DIR))
+print("Final ZIP saved:", ZIP_PATH)
+
+# === 8) Simple info panel =====================================
 from IPython.display import display, Markdown, clear_output
 
 label_map = {
@@ -194,7 +291,7 @@ label_map = {
     "silte": "SILT",
     "glicerina": "GLYCERIN",
     "concreto": "CONCRETE",
-    "areia": "SAND"
+    "areia": "SAND",
 }
 
 color_map = {
@@ -208,40 +305,46 @@ color_map = {
     "silte": "#98fb98",
     "glicerina": "#daa520",
     "concreto": "#555555",
-    "areia": "#ffd24d"
+    "areia": "#ffd24d",
 }
 
 clear_output(wait=True)
-
 label = label_map.get(pred, pred.upper())
-display(Markdown(f"## PIEZO model classification result: **{label}**"))
+display(Markdown("## PIEZO model classification result: **%s**" % label))
 
 bar_n = max(0, min(10, int(round(proba * 10))))
-bar = "[" + "#" * bar_n + "-" * (10 - bar_n) + "]"
+bar = "[" + ("#" * bar_n) + ("-" * (10 - bar_n)) + "]"
+display(Markdown("**Confidence level:** %s (%.1f%%)" % (bar, proba * 100.0)))
 
-display(Markdown(f"**Confidence level:** {bar} ({proba * 100:.1f}%)"))
-
-plt.figure(figsize=(8,3))
-plt.plot(f/1000.0, a, lw=2, color=color_map.get(pred, "tab:blue"))
-plt.axvline(fr/1000.0, ls="--", lw=1); plt.axvline(fa/1000.0, ls="--", lw=1)
-plt.title(f"{emoji} {pred.capitalize()} — FFT do exemplo")
-plt.xlabel("Frequência (kHz)"); plt.ylabel("Amplitude (normalizada)")
-plt.grid(alpha=0.3); plt.tight_layout(); plt.show()
+plt.figure(figsize=(8, 3))
+plt.plot(f / 1000.0, a, lw=2, color=color_map.get(pred, "tab:blue"))
+plt.axvline(fr / 1000.0, ls="--", lw=1)
+plt.axvline(fa / 1000.0, ls="--", lw=1)
+plt.title("%s - FFT example" % pred.capitalize())
+plt.xlabel("Frequency (kHz)")
+plt.ylabel("Amplitude (normalized)")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
 
 csv_sint = os.path.join(OUTPUT_DIR, "banco_piezo_total.csv")
 if os.path.exists(csv_sint):
     df_sint2 = pd.read_csv(csv_sint)
     cont = df_sint2["meio"].value_counts()
-    labs, vals = cont.index.tolist(), cont.values.tolist()
+    labs = cont.index.tolist()
+    vals = cont.values.tolist()
     colors = [color_map.get(lbl, None) for lbl in labs]
-    plt.figure(figsize=(5,5))
-    plt.pie(vals, labels=[emoji_map.get(lbl,lbl) for lbl in labs],
-            autopct="%1.1f%%", colors=colors)
-    plt.title("Como foi o dataset sintético")
-    plt.tight_layout(); plt.show()
 
-plt.figure(figsize=(6,3.5))
-plt.bar(["f_r (kHz)","f_a (kHz)","k2"], [fr/1e3, fa/1e3, float(k2)])
-plt.title("Parâmetros estimados do exemplo"); plt.tight_layout(); plt.show()
-print("Painel do PIEZO exibido com sucesso.")
+    plt.figure(figsize=(5, 5))
+    plt.pie(vals, labels=labs, autopct="%1.1f%%", colors=colors)
+    plt.title("Synthetic dataset composition")
+    plt.tight_layout()
+    plt.show()
 
+plt.figure(figsize=(6, 3.5))
+plt.bar(["f_r (kHz)", "f_a (kHz)", "k2"], [fr / 1e3, fa / 1e3, float(k2)])
+plt.title("Estimated parameters (example)")
+plt.tight_layout()
+plt.show()
+
+print("PIEZO panel displayed successfully.")
