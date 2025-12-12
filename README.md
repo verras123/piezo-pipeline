@@ -19,3 +19,14 @@ These scripts are intended to be executed **in Google Colab**.
 5. Run the pipeline
 
 Local execution is **not supported** by design.
+
+## Examples
+
+### FFT of a synthetic example
+![FFT example](images/fft_example.png)
+
+### Estimated parameters from FFT peaks
+![Estimated parameters](images/estimated_parameters.png)
+
+### Synthetic dataset composition
+![Synthetic dataset](images/synthetic_dataset.png)
