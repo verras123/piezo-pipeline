@@ -1,12 +1,12 @@
 # piezo-pipeline
-End-to-end pipeline for piezoelectric signal analysis using FFT, feature engineering, machine learning and optional 1D CNN.
-# piezo-pipeline
 
-End-to-end pipeline for piezoelectric signal analysis.
+End-to-end pipeline for piezoelectric signal analysis using FFT, feature engineering,
+machine learning and optional 1D CNN.
 
 ## IMPORTANT
 
-This repository contains scripts exported as `.txt` files.
+The main entry point of the pipeline is `piezo_5.txt`, provided as a `.txt` script
+and intended to be executed in Google Colab.
 
 These scripts are intended to be executed **in Google Colab**.
 
