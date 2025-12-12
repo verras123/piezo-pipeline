@@ -1,5 +1,5 @@
 # ==============================================================
-# 🧠 PIEZO-ACOUSTIC FULL PIPELINE — RUN ALL (versão autônoma)
+# PIEZO-ACOUSTIC FULL PIPELINE — RUN ALL (versão autônoma)
 # --------------------------------------------------------------
 # Gera dados sintéticos (10 meios), treina IA (features e CNN-1D)
 # e salva tudo em /MyDrive/saida_piezo ou ./saida_piezo.
@@ -93,12 +93,12 @@ for meio,(rho,c,visc) in meios.items():
     dados.append({"amostra":nome,"meio":meio,"f_r":frd,"f_a":fad,"k2":k2,"Z":Z})
 df_sint=pd.DataFrame(dados)
 df_sint.to_csv(f"{OUTPUT_DIR}/banco_piezo_total.csv",index=False)
-print("✅ Sintético:", len(df_sint))
+print("Sintético:", len(df_sint))
 
 # === 3) Banco híbrido ========================================
 df_hibrid=df_sint.copy(); df_hibrid["tipo"]="synthetic"
 df_hibrid.to_csv(f"{OUTPUT_DIR}/banco_piezo_hibrido.csv",index=False)
-print("✅ Banco híbrido criado.")
+print("Banco híbrido criado.")
 
 # === 4) Treinamento FEATURES ================================
 feat=["f_r","f_a","k2","Z"]
@@ -178,22 +178,48 @@ with zipfile.ZipFile(ZIP_PATH,"w",zipfile.ZIP_DEFLATED) as z:
     for fz in fs:
       if fz.endswith(".zip"): continue
       z.write(os.path.join(r,fz), arcname=os.path.relpath(os.path.join(r,fz),OUTPUT_DIR))
-print("✅ ZIP final salvo em:", ZIP_PATH)
+print("ZIP final salvo em:", ZIP_PATH)
 
-# === 8) 🎨 Painel “infantil” — PIEZO =========================
+# === 8) Informational panel - PIEZO =======================
 from IPython.display import display, Markdown, clear_output
-emoji_map = {"agua":"💧","oleo":"🛢️","ar":"🌬️","areia_seca":"🏖️","areia_umida":"🌊",
-             "argila":"🧱","lama":"🪣","silte":"🌾","glicerina":"🍯","concreto":"🏗️","areia":"🏖️"}
-color_map = {"agua":"#00bfff","oleo":"#111111","ar":"#bbbbbb","areia_seca":"#ffe066",
-             "areia_umida":"#0066cc","argila":"#a0522d","lama":"#556b2f","silte":"#98fb98",
-             "glicerina":"#daa520","concreto":"#555555","areia":"#ffd24d"}
+
+label_map = {
+    "agua": "WATER",
+    "oleo": "OIL",
+    "ar": "AIR",
+    "areia_seca": "DRY SAND",
+    "areia_umida": "WET SAND",
+    "argila": "CLAY",
+    "lama": "MUD",
+    "silte": "SILT",
+    "glicerina": "GLYCERIN",
+    "concreto": "CONCRETE",
+    "areia": "SAND"
+}
+
+color_map = {
+    "agua": "#00bfff",
+    "oleo": "#111111",
+    "ar": "#bbbbbb",
+    "areia_seca": "#ffe066",
+    "areia_umida": "#0066cc",
+    "argila": "#a0522d",
+    "lama": "#556b2f",
+    "silte": "#98fb98",
+    "glicerina": "#daa520",
+    "concreto": "#555555",
+    "areia": "#ffd24d"
+}
 
 clear_output(wait=True)
-emoji = emoji_map.get(pred, "❓")
-display(Markdown(f"## 🧠 A IA do **Piezo** acha que é: **{emoji} {pred.upper()}**"))
-barra_n = max(0, min(10, int(round(proba*10))))
-barra = "🟩"*barra_n + "⬜"*(10-barra_n)
-display(Markdown(f"**Confiança:** {barra} ({proba*100:.1f}%)"))
+
+label = label_map.get(pred, pred.upper())
+display(Markdown(f"## PIEZO model classification result: **{label}**"))
+
+bar_n = max(0, min(10, int(round(proba * 10))))
+bar = "[" + "#" * bar_n + "-" * (10 - bar_n) + "]"
+
+display(Markdown(f"**Confidence level:** {bar} ({proba * 100:.1f}%)"))
 
 plt.figure(figsize=(8,3))
 plt.plot(f/1000.0, a, lw=2, color=color_map.get(pred, "tab:blue"))
@@ -218,3 +244,4 @@ plt.figure(figsize=(6,3.5))
 plt.bar(["f_r (kHz)","f_a (kHz)","k2"], [fr/1e3, fa/1e3, float(k2)])
 plt.title("Parâmetros estimados do exemplo"); plt.tight_layout(); plt.show()
 print("Painel do PIEZO exibido com sucesso.")
+
