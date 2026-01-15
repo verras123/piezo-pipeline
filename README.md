@@ -202,6 +202,76 @@ source .venv/bin/activate
 
 ---
 
-## 9) License
+9) How to read the plots (quick interpretation)
+
+This repository exports a few plots to help validate the pipeline end-to-end.
+
+Confusion Matrix - Features (RandomForest)
+
+This confusion matrix shows the performance of the feature-based classifier (RandomForest) trained on engineered summary features extracted from the synthetic signals (e.g., peak-related descriptors and physics-inspired features).
+
+How to interpret:
+
+A strong diagonal means the model is correctly classifying most samples.
+
+Off-diagonal values indicate confusion between classes.
+
+In this synthetic setup, this model is expected to perform very well because engineered features capture highly discriminative structure.
+
+
+Confusion Matrix - FFT (HistGradientBoosting)
+
+This confusion matrix shows the performance of the FFT-based baseline (HistGradientBoosting) trained directly on a spectral representation of the signal.
+
+How to interpret:
+
+This approach is intentionally more challenging than feature engineering.
+
+Lower accuracy and cross-class confusion can occur due to:
+
+frequency resolution limits
+
+spectral normalization choices
+
+peak selection strategy
+
+overlap between classes under noise
+
+
+
+This is expected behavior and provides a realistic comparison between engineered features vs raw spectral representations.
+
+Synthetic dataset composition
+
+This pie chart shows the distribution of classes in the generated synthetic dataset.
+
+What to look for:
+
+A balanced dataset avoids biasing the classifier toward one dominant class.
+
+If the dataset becomes imbalanced, confusion matrices may look artificially worse for minority classes.
+
+
+FFT example (signal)
+
+This plot shows an example FFT spectrum for one selected class (e.g., "agua").
+
+What to look for:
+
+Dominant spectral peaks (main frequency components)
+
+Secondary peaks / harmonics
+
+Noise floor level
+
+The dashed lines indicate the detected/selected peak frequencies used by the pipeline (when enabled)
+
+
+These plots are included to make the project easy to inspect directly on GitHub without running the code.
+
+
+---
+
+## 10) License
 
 MIT License.
