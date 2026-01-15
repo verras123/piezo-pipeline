@@ -1,0 +1,38 @@
+{
+  "timestamp_utc": "2026-01-15T21:20:01Z",
+  "output_dir": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo",
+  "seed": 42,
+  "n_samples_per_medium": 100,
+  "n_media": 10,
+  "n_total_samples": 1000,
+  "fft_storage": "npz",
+  "fft_repr": "raw",
+  "fft_points": 4096,
+  "fft_bank_path": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\dados_sinteticos\\dados_brutos\\fft_bank.npz",
+  "features_model_accuracy": 0.99,
+  "fft_hgb_accuracy": 0.6,
+  "example_prediction": {
+    "label": "agua",
+    "confidence": 1.0
+  },
+  "artifacts": {
+    "bank_total_csv": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\banco_piezo_total.csv",
+    "bank_hybrid_csv": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\banco_piezo_hibrido.csv",
+    "model_features_joblib": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\out_model\\model_features.joblib",
+    "cm_features_png": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\out_model\\cm_features.png",
+    "model_fft_hgb_joblib": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\out_model\\model_fft_hgb.joblib",
+    "cm_fft_hgb_png": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\out_model\\cm_fft_hgb.png",
+    "fft_example_png": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\out_model\\fft_example.png",
+    "dataset_pie_png": "C:\\Users\\Thiago Guedin\\Desktop\\Projeto_Piezo\\saida_piezo\\out_model\\dataset_composition_pie.png"
+  },
+  "environment": {
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "numpy": "2.4.1",
+    "pandas": "2.3.3",
+    "sklearn": "1.8.0",
+    "scipy": "1.17.0",
+    "matplotlib": "3.10.8"
+  },
+  "elapsed_sec": 147.30861902236938
+}
