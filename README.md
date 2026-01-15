@@ -202,73 +202,140 @@ source .venv/bin/activate
 
 ---
 
-9) How to read the plots (quick interpretation)
+Entendi. Entao toma uma versao **MAIS COMPLETA**, mas ainda **profissional** (sem virar texto infinito).
+Substitui sua secao 9 inteira por esta aqui:
 
-This repository exports a few plots to help validate the pipeline end-to-end.
+---
 
-Confusion Matrix - Features (RandomForest)
+## 9) How to read the plots (detailed interpretation)
 
-This confusion matrix shows the performance of the feature-based classifier (RandomForest) trained on engineered summary features extracted from the synthetic signals (e.g., peak-related descriptors and physics-inspired features).
+This section explains what each exported plot represents, why it exists in the pipeline, and what conclusions can be extracted from it.
+All plots shown below are committed under `images/` so the repository can be inspected directly on GitHub without running the code.
 
-How to interpret:
+---
 
-A strong diagonal means the model is correctly classifying most samples.
+### 9.1) Confusion Matrix - Features (RandomForest)
 
-Off-diagonal values indicate confusion between classes.
+This confusion matrix reports the classification performance of the **feature-based model**, trained on engineered (physics-inspired) features extracted from the synthetic piezoelectric signals.
 
-In this synthetic setup, this model is expected to perform very well because engineered features capture highly discriminative structure.
+**What this model is using as input:**
+Instead of learning directly from the raw waveform or spectrum, the model receives a compact set of engineered descriptors (summary statistics and peak-related quantities). This approach is typical in applied signal processing when interpretability and robustness are desired.
 
+**How to interpret the matrix:**
 
-Confusion Matrix - FFT (HistGradientBoosting)
+* The **main diagonal** corresponds to correct classifications (true class = predicted class).
+* **Off-diagonal cells** represent misclassifications, showing which classes the model confuses.
+* A strong diagonal indicates the features capture discriminative structure between classes.
 
-This confusion matrix shows the performance of the FFT-based baseline (HistGradientBoosting) trained directly on a spectral representation of the signal.
+**What a strong result means here:**
+On a synthetic dataset where classes were generated with controlled differences, engineered features tend to separate classes well. This makes RandomForest a strong baseline for a local-first, fast pipeline.
 
-How to interpret:
+**Typical causes of residual confusion (if present):**
 
-This approach is intentionally more challenging than feature engineering.
+* Classes with similar spectral peak patterns (close resonance behavior)
+* Overlapping parameter ranges in the synthetic generator
+* Noise level and damping effects that reduce separation
 
-Lower accuracy and cross-class confusion can occur due to:
+**Takeaway:**
+If the diagonal is dominant, the pipeline is correctly extracting stable features and the feature-based classifier is a reliable baseline for the current dataset configuration.
 
-frequency resolution limits
+---
 
-spectral normalization choices
+### 9.2) Confusion Matrix - FFT (HistGradientBoosting)
 
-peak selection strategy
+This confusion matrix reports the performance of the **FFT-based baseline**, trained on a spectral representation of the signal (instead of engineered features).
 
-overlap between classes under noise
+**Why this baseline exists:**
+It provides a comparison between:
 
+* **Feature engineering** (compact, interpretable, robust)
+  vs
+* **Raw spectral learning** (higher dimensional, potentially less stable, more sensitive)
 
+**How to interpret the matrix:**
 
-This is expected behavior and provides a realistic comparison between engineered features vs raw spectral representations.
+* A weaker diagonal compared to the feature-based model is expected in many setups.
+* Confusions are informative: they reveal which classes share similar spectral signatures.
 
-Synthetic dataset composition
+**Why FFT-only classification is harder:**
 
-This pie chart shows the distribution of classes in the generated synthetic dataset.
+* FFT vectors can be high-dimensional and sensitive to:
 
-What to look for:
+  * windowing strategy
+  * normalization choices
+  * frequency resolution
+  * peak alignment and small shifts in resonance
+* Two classes may differ physically, but still generate similar spectral energy distributions under certain noise/damping conditions.
 
-A balanced dataset avoids biasing the classifier toward one dominant class.
+**What a “good” FFT baseline looks like:**
 
-If the dataset becomes imbalanced, confusion matrices may look artificially worse for minority classes.
+* Reasonable diagonal dominance
+* Confusion concentrated only between physically similar classes
+* No collapse into predicting a single dominant class
 
+**Takeaway:**
+This baseline helps validate whether the spectral representation alone contains enough information to separate classes, and it quantifies the performance gap between engineered features and raw spectral learning.
 
-FFT example (signal)
+---
 
-This plot shows an example FFT spectrum for one selected class (e.g., "agua").
+### 9.3) Synthetic dataset composition
 
-What to look for:
+This plot shows the distribution of samples per class in the synthetic dataset.
 
-Dominant spectral peaks (main frequency components)
+**Why it matters:**
 
-Secondary peaks / harmonics
+* Class imbalance can artificially inflate or deflate metrics.
+* A balanced dataset ensures:
 
-Noise floor level
+  * fair training
+  * fair confusion matrices
+  * comparable per-class performance
 
-The dashed lines indicate the detected/selected peak frequencies used by the pipeline (when enabled)
+**What to look for:**
 
+* Ideally, classes should be approximately balanced.
+* If imbalance exists, interpret confusion matrices with caution, because minority classes tend to show lower recall.
 
-These plots are included to make the project easy to inspect directly on GitHub without running the code.
+**Takeaway:**
+This plot is a quick QA check that the dataset generator is producing the intended distribution.
 
+---
+
+### 9.4) FFT example (signal)
+
+This plot shows an example FFT spectrum for a selected class (e.g., `"agua"`), including detected peaks when enabled by the pipeline.
+
+**What the FFT represents:**
+
+* The FFT converts the time-domain signal into frequency-domain energy distribution.
+* Peaks correspond to dominant oscillation components (resonances and harmonics).
+
+**What to look for:**
+
+* **Main peak frequency** (dominant resonance)
+* **Secondary peaks / harmonics** (structure beyond the main mode)
+* **Noise floor level** (how clean the spectrum is)
+* **Peak stability** across samples of the same class
+
+**How this connects to the ML models:**
+
+* The FFT baseline model uses spectral information directly.
+* The feature-based model typically uses peak-related summaries derived from this spectrum.
+
+**Takeaway:**
+This plot validates that the FFT computation and peak extraction are working as expected and that the spectrum contains meaningful structure.
+
+---
+
+### 9.5) Practical conclusions (what these plots validate)
+
+If all plots look consistent, the pipeline is validated end-to-end:
+
+* dataset generation is producing meaningful multi-class data
+* FFT and peak extraction are stable
+* feature-based ML is learning separable structure
+* FFT-based ML behaves as a realistic baseline
+* outputs are exportable and reproducible locally
 
 ---
 
